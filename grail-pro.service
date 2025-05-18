@@ -1,0 +1,15 @@
+[Unit]
+Description=Grail Pro Enclave
+After=network.online.target
+Requires=network.online.target
+
+[Service]
+Type=simple
+User=grail
+WorkingDirectory=/home/grail
+PIDFile=/tmp/grail.pid
+ExecStart=./run.sh
+ExecStop=/bin/sh -c 'start-stop-daemon --quiet --stop --chuid grail --pidfile=/tmp/grail.pid'
+
+[Install]
+WantedBy=multi-user.target

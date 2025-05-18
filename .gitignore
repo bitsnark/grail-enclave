@@ -1,0 +1,13 @@
+.DS_Store
+.vscode/
+nohup.out
+
+.env
+.env.*
+*.log
+*.log.*
+*.swp
+
+.pytest-cache/
+__pycache__/
+venv/

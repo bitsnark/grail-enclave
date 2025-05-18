@@ -1,0 +1,33 @@
+{
+    "Version": "2012-10-17",
+        "Id": "strict-enclave-only-policy",
+        "Statement": [
+        {
+            "Sid": "AllowDecryptFromSpecificEnclave",
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "kms.amazonaws.com"
+            },
+            "Action": "kms:Decrypt",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "kms:RecipientAttestation:PCR0": "pcr0-hex-value",
+                    "kms:RecipientAttestation:PCR1": "pcr1-hex-value",
+                    "kms:RecipientAttestation:PCR2": "pcr2-hex-value",
+                    "kms:RecipientAttestation:PCR3": "pcr3-hex-value"
+                },
+                "Bool": {
+                    "kms:RecipientAttestation:EnclaveIssued": "true"
+                }
+            }
+        },
+        {
+            "Sid": "DenyAllOtherAccess",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "*",
+            "Resource": "*"
+        }
+    ]
+}
