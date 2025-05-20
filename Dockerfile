@@ -4,4 +4,9 @@ RUN apk add --no-cache libsecp256k1
 ADD ./enclave-server /enclave-server
 RUN pip install ./enclave-server
 WORKDIR /enclave-server
-CMD ["python", "-m", "signer"]
+RUN cat <<'EOF' > /enclave-server/run.sh
+#!/bin/sh
+python -m signer
+EOF
+RUN chmod +x /enclave-server/run.sh
+CMD ["/enclave-server/run.sh"]
