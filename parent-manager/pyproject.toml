@@ -21,6 +21,9 @@ dev = [
     'pylint == 3.3.7'
 ]
 
+[project.scripts]
+allfather = 'allfather:__main__'
+
 [project.urls]
 Home = 'https://github.com/bitsnark/grail-enclave'
 

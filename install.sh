@@ -54,8 +54,8 @@ echo Building Python virtual environment for the parent server...
 parent_package_name=parent-manager
 server_dir="$enclave_home_dir/$parent_package_name"
 venv_dir="$server_dir/venv"
-su -c "python3.12 -m venv '$venv_dir'" "$user"
 rsync -a --chown=$user:$user --info=progress2 "$repo_dir/$parent_package_name/" "$server_dir/"
+su -c "python3.12 -m venv '$venv_dir'" "$user"
 su -c ". '$venv_dir/bin/activate' && pip install '$server_dir'" "$user"
 
 echo "Creating and enabling $service_name service..."
@@ -66,7 +66,7 @@ cat > "$run_script_file" <<EOF
 vsock-proxy $vsock_proxy_port kms.$aws_region.amazonaws.com 443 &
 nitro-cli run-enclave --cpu-count 2 --memory 512 --enclave-cid 16 --eif-path $image_file  # --debug-mode
 . "$venv_dir/bin/activate"
-python -m "$parent_package_name"
+allfather
 EOF
 chown "$user:$user" "$run_script_file"
 chmod 700 "$run_script_file"
