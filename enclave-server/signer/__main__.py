@@ -1,4 +1,6 @@
 import time
+import bitcointx.core.key
+print(f"managed to import {bitcointx.core.key}")
 while True:
-    print('Not quite yet')
+    print(f"The time is {time.time()}")
     time.sleep(1)
