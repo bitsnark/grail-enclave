@@ -74,8 +74,8 @@ chmod 700 "$run_script_file"
 cat > "/etc/systemd/system/$service_name.service" <<EOF
 [Unit]
 Description=Grail Pro Enclave
-After=network.online.target
-Requires=network.online.target
+After=network.target
+Requires=network.target
 
 [Service]
 Type=simple
