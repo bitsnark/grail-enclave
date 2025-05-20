@@ -6,7 +6,7 @@ A trusted environment that signs Bitcoin transactions when provided with valid z
 
 The enclave is signed and attested by the AWS Nitro Hypervisor, so we can fully trust it. The parent (host) is under the control of the operator, so it must never be trusted.
 
-The enclave runs the Python `./enclave-server/signer` package which listens for commands on a vsock socket. The parent runs a `kms-vsock` proxy which securely relays requests from the enclave to Amazon's KMS, the `./parent-manager/allfather` package which initializes the enclave and exposes its signing capabilities to the outside world through WSGI, and of course the AWS Nitro Enclaves itself - all of which is managed by `./grail-pro.service`.
+The enclave runs the Python `./enclave-server/signer` package which listens for commands on a vsock socket. The parent runs a `kms-vsock` proxy which securely relays requests from the enclave to Amazon's KMS, the `./parent-manager/allfather` package which initializes the enclave and exposes its signing capabilities to the outside world through WSGI, and of course the AWS Nitro Enclaves itself - all of which is managed by `grail-pro.service`.
 
 Enclaves generate their own private keys and only expose them in a KMS encrypted format to the parent. The `./kms-policy` is set to only allow attested enclaves to decrypt the keys and to never allow anyone to change this, so the encrypted keys can be safely backed up and published.
 
@@ -34,7 +34,7 @@ The Hypervisor can attest for different "measurements", which are hashes of diff
 
 5 might be interesting to the contract, giving the operator a clean way to sign his ownership of an enclave and its key.
 
-## Storage of Keys
+## Storage of Encrypted Keys
 
 The encrypted keys need to be backed up so that they can be used to recover the enclave in case of a failure, or create more enclaves with the same key for load balancing. If the KMS is not set to enforce PCR3, meaning that the operator is letting any operator run an enclave on his behalf (this can add to trust and reduce the need for slashing and transaction recycling, although it is always possible for the operator to shut down his KMS).
 
@@ -42,23 +42,25 @@ In any events, only well attested enclaves can decrypt the keys, so they can be 
 
 ## Life Cycle
 
-The enclave is started by `./grail-pro.service` which runs `kms-vsock`, starts the enclave and passes control to the parent manager. Once the enclave starts it waits for the parent manager to initialize it with a `set_key` command before doing anything else.
+The enclave is started by `grail-pro.service` which runs `kms-vsock`, starts the enclave and passes control to the parent manager. Once the enclave starts it waits for the parent manager to initialize it with a `set_key` command before doing anything else.
 
 If the `GRAIL_PUBKEY` environment variable is set, the parent manager gets the matching KMS encrypted private key from the key storage (throwing and logging an error if no match is found) and passes it to the enclave with the `set_key` command (in which case it also verifies that the enclave derives the correct public key from the encrypted private key, throwing an error if it doesn't). If the `GRAIL_PUBKEY` environment variable is not set it calls `set_key` with no arguments and a new key is generated and encrypted.
 
 In both cases, the enclave returns a signed attestation from the Hypervisor, a KMS encrypted private key and its matching (plane text) public key, which the parent logs and the operator monitors.
 
-Lastly, the parent manager starts listening for requests coming in from HTTP clients (through a WSGI application server) to pass `sign` requests to the enclave, containing peg-in and peg-out transactions to sign and zk-SNARK proofs of BTC locking or of xBTC burn. This too is logged and monitored.
+Lastly, the parent manager starts listening for requests coming in from HTTP clients (through a WSGI application server) to pass `sign` requests to the enclave, containing unsigned Bitcoin transactions to sign and zk-SNARK proofs of BTC locking or of xBTC burn. This too is logged and monitored.
+
+## Enclave Commands
 
 ### `set_key`
 
-This flow sets the secret key of the enclave and is called only once, directly from the parent, right after startup.
+This command sets the secret key of the enclave and is called only once, directly from the parent, right after startup.
 
 If no arguments are provided, the enclave generates a new key for future `sign` operations, and then retrieves a public key from the KMS and uses it to encrypt the new key for export. If an encrypted key is provided, the enclave decrypts it using KMS and uses it on future `sign` operations.
 
 In both cases the enclave will derive a public key from the private key and request a signed attestation from the Hypervisor, returning all three elements to the parent: the KMS encrypted private key, the public key and the attestation.
 
-Note: If this is a new key it needs to be registered (and staked) with the `grail-pro` smart contract, which checks the attestation. This process can be automated, in which case we will probably use the enclave to sign the transaction (and the operator will fund a wallet it controls with whatever fees it requires), but for now we assume the operator performs this expensive operation using their own wallet so the parent manager constructs the transaction on the parent and passes it back as part of the response.
+Note: If this is a new key it needs to be registered (and staked) with the `grail-pro` smart contract, which checks the attestation. This process can be automated, in which case we will probably use the enclave to sign the transaction (and the operator will fund a wallet it controls with whatever fees it requires), but for now we assume the operator performs this expensive operation using their own wallet. All the data required to perform the registration is returned to the parent manager which logs it.
 
 Example request:
 ```json
@@ -71,18 +73,17 @@ Example request:
 ```
 
 Example response:
-the parent manager`json
+```json
 {
     "public_key": "<base64-encoded-public-key>"
     "encrypted_key": "<base64-encoded-encrypted-key>",
-    "attestation": "<base64-encoded-attestation>",
-    "unsigned_registration_tx": "<base64-encoded-unsigned-registration-transaction>"
+    "attestation": "<base64-encoded-attestation>"
 }
 ```
 
 ### `sign`
 
-This flow is initiated by an HTTP client which sends a JSON request containing an unsigned peg-in or peg-out transaction and a zk-SNARK proof of BTC lock or xBTC burn to the the parent manager. The the parent manager forwards the request to the enclave through the vsock socket and the enclave verifies the proof and signs the transaction (or returns an error). The signed transaction (or the error) is then returned to the the parent manager which returns it to the HTTP client.
+This command is initiated by an HTTP client which sends a JSON request containing an unsigned peg-in or peg-out transaction (passed in PSBT format) and a zk-SNARK proof of BTC lock or xBTC burn to the parent manager. The parent manager forwards the request to the enclave through the vsock socket and the enclave verifies the proof and signs the transaction (or returns an error). The signed transaction (or the error) is then returned to the parent manager which returns it to the HTTP client.
 
 Example request:
 ```json
@@ -90,9 +91,9 @@ Example request:
     "command": "sign",
     "args": {
         "type": "peg-in",
-        "pegin-id": "<base64-encoded-pegin-id>",
-        "tx": "<base64-encoded-unsigned-transaction>",
-        "proof": "<base64-encoded-proof>"
+        "peg-in-id": "<base64-encoded-peg-in-id>",
+        "proof": "<base64-encoded-proof>",
+        "psbt": "<base64-encoded-psbt>"
     }
 }
 ```
@@ -103,6 +104,13 @@ Example response:
     "signature": "<base64-encoded-signature>"
 }
 ```
+
+## Transaction and Proof Types
+
+The enclave can sign two types of transactions:
+
+- `peg-in`: A transaction that mints xBTC using a Charmed minting NFT. Requires a proof that the txid of the PSBT that awaits signage will mint an amount of Charmed xBTC as specified in the peg-in corresponding the provided ID, and that matching funds were locked to the peg-in's specified list of public keys.
+- `peg-out`: A transaction that unlocks funds from the grail-pro multisig. Requires a proof that the txid of the PSBT that awaits signage will spend the funds locked in the peg-in corresponding the provided ID, and that a matching amount of xBTC was burned.
 
 ## Deploying the Enclave
 
